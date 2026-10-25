@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Admin dashboard — Examly</title><link rel="stylesheet" href="style.css"></head>
+<body data-guard="admin">
+<header class="site-header"><nav class="navbar">
+    <a class="brand" href="admin-dashboard.html"><span class="brand-mark">✓</span> Examly <small>ADMIN</small></a>
+    <button class="nav-toggle" type="button" aria-label="Open menu">☰</button>
+    <ul class="nav-links"><li><a class="active" href="admin-dashboard.html">Overview</a></li><li><a href="manage-courses.html">Courses</a></li><li><a href="student-progress.html">Student progress</a></li><li><a href="manage-questions.html">Questions</a></li><li><a href="view-students.html">Students</a></li><li><a href="view-payments.html">Payments</a></li><li><a href="admin-results.html">Results</a></li></ul>
+    <div class="nav-actions"><a class="btn btn-outline" href="#" data-logout>Sign out</a></div>
+</nav></header>
+<main class="page"><div class="container">
+    <div class="dashboard-header">
+        <div><p class="eyebrow">Administration</p><h1>System overview</h1><p class="muted">Monitor and manage your examination platform.</p></div>
+        <div class="header-actions"><a class="btn btn-outline" href="student-progress.html">View student progress</a><a class="btn btn-outline" href="manage-courses.html">＋ Manage courses</a><a class="btn btn-primary" href="manage-questions.html">＋ Add question</a></div>
+    </div>
+    <div class="stats-grid admin-stats">
+        <div class="stat-card"><span class="stat-label">Registered students</span><strong id="adminStudents">0</strong></div>
+        <div class="stat-card"><span class="stat-label">Payments</span><strong id="adminPayments">0</strong></div>
+        <div class="stat-card"><span class="stat-label">Results submitted</span><strong id="adminResults">0</strong></div>
+        <div class="stat-card"><span class="stat-label">Question bank</span><strong id="adminQuestions">0</strong></div>
+        <div class="stat-card"><span class="stat-label">Available courses</span><strong id="adminCourses">0</strong></div>
+    </div>
+    <div class="feature-grid">
+        <a class="card" href="manage-courses.html"><div class="card-icon">▣</div><h3>Manage courses</h3><p>Add courses, change fees and details, or remove courses from the student catalog.</p></a>
+        <a class="card" href="student-progress.html"><div class="card-icon">◉</div><h3>Student progress</h3><p>Monitor registered, active, and completed exams.</p></a>
+        <a class="card" href="manage-questions.html"><div class="card-icon">?</div><h3>Manage questions</h3><p>Create, review, and remove assessment questions.</p></a>
+        <a class="card" href="view-students.html"><div class="card-icon">◎</div><h3>View students</h3><p>Review registrations and payment status.</p></a>
+        <a class="card" href="admin-results.html"><div class="card-icon">↗</div><h3>View results</h3><p>Track outcomes across all assessments.</p></a>
+    </div>
+</div></main><div id="toast" class="toast"></div><script src="app.js"></script>
+</body></html>

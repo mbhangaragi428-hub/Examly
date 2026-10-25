@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width,initial-scale=1">
+    <title>My results — Examly</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body data-guard="student">
+    <header class="site-header">
+        <nav class="navbar">
+            <a class="brand" href="dashboard.html"><span class="brand-mark">✓</span> Examly</a>
+            <button class="nav-toggle" type="button">☰</button>
+            <ul class="nav-links">
+                <li><a href="dashboard.html">Dashboard</a></li>
+                <li><a href="exam.html">Browse exams</a></li>
+                <li><a class="active" href="result.html">Results</a></li>
+                <li><a href="profile.html">Profile</a></li>
+            </ul>
+            <div class="nav-actions">
+                <a class="btn btn-outline" href="#" data-logout>Sign out</a>
+            </div>
+        </nav>
+    </header>
+    <main class="page">
+        <div class="container">
+            <div class="dashboard-header">
+                <div>
+                    <p class="eyebrow">Performance history</p>
+                    <h1>Your results</h1>
+                    <p class="muted">Review your assessment performance and keep improving.</p>
+                </div>
+                <div class="header-actions">
+                    <a class="btn btn-outline" href="dashboard.html">← Back to dashboard</a>
+                    <a class="btn btn-primary" href="exam.html">Take an exam →</a>
+                </div>
+            </div>
+            <section class="panel">
+                <div class="table-wrap">
+                    <table class="data-table">
+                        <thead>
+                            <tr>
+                                <th>Assessment</th>
+                                <th>Score</th>
+                                <th>Percentage</th>
+                                <th>Status</th>
+                                <th>Date</th>
+                            </tr>
+                        </thead>
+                        <tbody id="resultRows"></tbody>
+                    </table>
+                </div>
+            </section>
+        </div>
+    </main>
+    <div id="toast" class="toast"></div>
+    <script src="app.js"></script>
+</body>
+</html>

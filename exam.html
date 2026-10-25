@@ -1,0 +1,10 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Register for an exam — Examly</title><link rel="stylesheet" href="style.css"></head>
+<body data-guard="student">
+<header class="site-header"><nav class="navbar"><a class="brand" href="dashboard.html"><span class="brand-mark">✓</span> Examly</a><button class="nav-toggle" aria-label="Open menu">☰</button><ul class="nav-links"><li><a href="dashboard.html">Dashboard</a></li><li><a class="active" href="exam.html">Browse exams</a></li><li><a href="result.html">Results</a></li><li><a href="profile.html">Profile</a></li></ul><div class="nav-actions"><a class="btn btn-outline" href="#" data-logout>Sign out</a></div></nav></header>
+<main class="page"><div class="container">
+    <div class="dashboard-header"><div><p class="eyebrow">Explore assessments</p><h1>Choose your next challenge</h1><p class="muted">Select one or more exams. Your registration is saved before payment.</p></div><a class="btn btn-outline" href="dashboard.html">← Back to dashboard</a></div>
+    <form id="registrationForm"><div class="registration-layout"><section><div class="panel"><div class="panel-header"><h2>Available exams</h2><span class="muted" id="courseCount">Loading courses...</span></div><div class="panel-body exam-options" id="examOptions"></div></div></section><aside class="summary-card"><h3>Registration summary</h3><div class="summary-line"><span>Subtotal</span><b id="total">₹0</b></div><div class="summary-line"><span>Discount</span><span id="discount">₹0</span></div><div class="form-group" style="margin:15px 0 0"><label for="discountPercent" style="color:#dbe5f5">Discount code (%)</label><input id="discountPercent" type="number" min="0" max="100" value="0"></div><div class="summary-line"><span>Total</span><b id="final">₹0</b></div><button class="btn" type="submit">Continue to payment →</button></aside></div></form>
+</div></main><div id="toast" class="toast"></div><script src="app.js"></script>
+</body></html>

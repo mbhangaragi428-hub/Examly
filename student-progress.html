@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width,initial-scale=1">
+    <title>Student progress — Examly admin</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body data-guard="admin">
+    <header class="site-header">
+        <nav class="navbar">
+            <a class="brand" href="admin-dashboard.html"><span class="brand-mark">✓</span> Examly <small>ADMIN</small></a>
+            <button class="nav-toggle" type="button">☰</button>
+            <ul class="nav-links">
+                <li><a href="admin-dashboard.html">Overview</a></li>
+                <li><a class="active" href="student-progress.html">Student progress</a></li>
+                <li><a href="manage-questions.html">Questions</a></li>
+                <li><a href="view-students.html">Students</a></li>
+                <li><a href="view-payments.html">Payments</a></li>
+                <li><a href="admin-results.html">Results</a></li>
+            </ul>
+            <div class="nav-actions"><a class="btn btn-outline" href="#" data-logout>Sign out</a></div>
+        </nav>
+    </header>
+    <main class="page">
+        <div class="container">
+            <div class="dashboard-header">
+                <div>
+                    <p class="eyebrow">Live monitoring</p>
+                    <h1>Student progress</h1>
+                    <p class="muted">Track registration, active attempts, completion, scores, and unanswered questions.</p>
+                </div>
+                <a class="btn btn-outline" href="admin-dashboard.html">← Back to dashboard</a>
+            </div>
+            <section class="panel">
+                <div class="panel-body progress-toolbar">
+                    <div class="form-group">
+                        <label for="progressSearch">Search student or exam</label>
+                        <input id="progressSearch" type="search" placeholder="Name, email, or exam">
+                    </div>
+                    <div class="form-group">
+                        <label for="progressFilter">Filter by status</label>
+                        <select id="progressFilter">
+                            <option value="All">All statuses</option>
+                            <option value="In Progress">In progress</option>
+                            <option value="Completed">Completed</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="collegeFilter">Filter by college</label>
+                        <select id="collegeFilter">
+                            <option value="All">All colleges</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="collegeFilter">Filter by college</label>
+                        <select id="collegeFilter">
+                            <option value="All">All colleges</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="table-wrap">
+                    <table class="data-table progress-table">
+                        <thead>
+                            <tr>
+                                <th>Student</th>
+                                <th>Exam</th>
+                                <th>Status</th>
+                                <th>Score</th>
+                                <th>Percentage</th>
+                                <th>Attempted</th>
+                                <th>Unanswered</th>
+                                <th>Last activity</th>
+                            </tr>
+                        </thead>
+                        <tbody id="progressRows"></tbody>
+                    </table>
+                </div>
+            </section>
+        </div>
+    </main>
+    <div id="toast" class="toast"></div>
+    <script src="app.js"></script>
+</body>
+</html>

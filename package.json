@@ -1,0 +1,17 @@
+{
+  "name": "examly-express-api",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Express REST API for the Examly exam portal",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "express": "^5.1.0",
+    "mongodb": "^7.7.0"
+  }
+}
