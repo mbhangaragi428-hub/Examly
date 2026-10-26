@@ -8,10 +8,13 @@
     "start": "node server.js"
   },
   "engines": {
-    "node": ">=18"
+    "node": ">=20.19.0"
   },
   "dependencies": {
+    "bcryptjs": "^3.0.3",
     "express": "^5.1.0",
-    "mongodb": "^7.7.0"
+    "express-session": "^1.19.0",
+    "mongodb": "^7.7.0",
+    "mongodb-memory-server": "^11.3.0"
   }
 }
