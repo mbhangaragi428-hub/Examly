@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Assessment — Examly</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body data-guard="student">
+    <header class="site-header">
+        <nav class="navbar">
+            <a class="brand" href="dashboard.html"><span class="brand-mark">✓</span> Examly</a>
+            <div class="nav-actions"><a class="btn btn-outline" href="dashboard.html">Exit assessment</a></div>
+        </nav>
+    </header>
+    <main class="page">
+        <div class="container">
+            <div class="dashboard-header">
+                <div>
+                    <p class="eyebrow">Timed assessment</p>
+                    <h1 id="examTitle">Loading assessment...</h1>
+                    <p class="muted">Choose one answer for each question. Your score is calculated when you submit.</p>
+                </div>
+                <div class="stat-card" aria-live="polite"><span class="stat-label">Time remaining</span><strong id="examTimer">--:--</strong></div>
+            </div>
+            <form id="examForm">
+                <div id="questionList" aria-live="polite"></div>
+                <button class="btn btn-primary" id="submitExam" type="submit">Submit assessment</button>
+            </form>
+        </div>
+    </main>
+    <div id="toast" class="toast" role="status" aria-live="polite"></div>
+    <script src="app.js"></script>
+</body>
+</html>

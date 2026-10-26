@@ -1,19 +1,24 @@
 (function () {
-    "use strict";
+    const STORAGE_KEYS = {
+        students: "examly_students",
+        admins: "examly_admins",
+        courses: "examly_courses",
+        questions: "examly_questions",
+        results: "examly_results",
+        payments: "examly_payments",
+        selectedExams: "examly_selected_exams",
+        session: "examly_session"
+    };
 
-    var catalog = [
+    const defaultCourses = [
         { id: "java", name: "Java Programming", category: "Development", duration: "45 min", fee: 500, icon: "☕" },
         { id: "python", name: "Python Programming", category: "Development", duration: "45 min", fee: 600, icon: "🐍" },
         { id: "web", name: "Web Development", category: "Frontend", duration: "60 min", fee: 700, icon: "◇" },
         { id: "dbms", name: "Database Management", category: "Data", duration: "40 min", fee: 400, icon: "▣" },
         { id: "cloud", name: "Cloud Computing", category: "Infrastructure", duration: "50 min", fee: 800, icon: "☁" }
     ];
-    var courseApiAvailable = false;
-    var collegeSuggestions = ["ABC College of Engineering", "Global Institute of Technology", "National College of Applied Sciences", "City Engineering College", "Vidyasagar Institute"];
-    function normalizeCollege(value) {
-        return String(value == null ? "" : value).trim();
-    }
-    var defaultQuestions = [
+
+    const defaultQuestions = [
         { id: "q1", question: "Which keyword is used to inherit a class in Java?", options: ["this", "extends", "implements", "super"], answer: 2 },
         { id: "q2", question: "What is the output type of input() in Python 3?", options: ["int", "float", "str", "bool"], answer: 3 },
         { id: "q3", question: "Which HTML element is used for the largest heading?", options: ["<heading>", "<h6>", "<h1>", "<head>"], answer: 3 },
@@ -22,597 +27,1188 @@
     ];
 
     function read(key, fallback) {
-        try { return JSON.parse(localStorage.getItem(key)) || fallback; } catch (error) { return fallback; }
+        try {
+            const raw = localStorage.getItem(key);
+            if (raw === null || raw === undefined) return fallback;
+            return JSON.parse(raw);
+        } catch (error) {
+            return fallback;
+        }
     }
+
     function write(key, value) {
         localStorage.setItem(key, JSON.stringify(value));
     }
-    async function loadCatalog() {
-        try {
-            var response = await fetch("api/courses");
-            if (!response.ok) throw new Error("Course API returned HTTP " + response.status + ".");
-            var payload = await response.json();
-            if (!payload || !Array.isArray(payload.data)) throw new Error("Course API returned invalid course data.");
-            catalog = payload.data;
-            courseApiAvailable = true;
-            write("courses", catalog);
-        } catch (error) {
-            courseApiAvailable = false;
-            var savedCourses = read("courses", null);
-            catalog = Array.isArray(savedCourses) ? savedCourses : catalog;
-        }
-    }
-    async function courseRequest(method, courseId, data) {
-        var options = { method: method, headers: {} };
-        if (data) {
-            options.headers["Content-Type"] = "application/json";
-            options.body = JSON.stringify(data);
-        }
-        var response = await fetch("api/courses" + (courseId ? "/" + encodeURIComponent(courseId) : ""), options);
-        if (!response.ok) {
-            var payload = await response.json().catch(function () { return {}; });
-            throw new Error(payload.error || "Course request failed with HTTP " + response.status + ".");
-        }
-        return response.status === 204 ? null : (await response.json()).data;
-    }
+
     function id(prefix) {
-        return prefix + Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
+        return prefix + Math.random().toString(36).slice(2, 10) + Date.now().toString(36);
     }
-    function text(value) {
-        return String(value == null ? "" : value).replace(/[&<>"']/g, function (char) {
-            return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#039;" }[char];
-        });
+
+    function normalizeCollege(value) {
+        return String(value || "").trim().replace(/\s+/g, " ");
     }
-    function money(value) { return "₹" + Number(value || 0).toLocaleString("en-IN"); }
-    function currentStudent() { return read("currentStudent", null); }
-    function saveStudent(student) {
-        var students = read("students", []);
-        var index = students.findIndex(function (item) { return item.email === student.email; });
-        if (index < 0) { students.push(student); } else { students[index] = student; }
-        write("students", students);
-        write("currentStudent", student);
-    }
-    function saveProgress(progress) {
-        var records = read("studentProgress", []);
-        var index = records.findIndex(function (item) {
-            return item.email === progress.email && item.exam === progress.exam;
-        });
-        if (index < 0) records.push(progress); else records[index] = progress;
-        write("studentProgress", records);
-    }
+
     function notify(message, type) {
-        var toast = document.getElementById("toast");
-        if (!toast) { alert(message); return; }
+        const toast = document.getElementById("toast");
+        if (!toast) {
+            window.alert(message);
+            return;
+        }
+
         toast.textContent = message;
-        toast.className = "toast show " + (type || "success");
-        window.setTimeout(function () { toast.className = "toast"; }, 3200);
+        toast.classList.remove("error", "success", "warning");
+        if (type === "error") toast.classList.add("error");
+        else if (type === "warning") toast.classList.add("warning");
+        else toast.classList.add("success");
+        toast.classList.add("show");
+        clearTimeout(notify.timeoutId);
+        notify.timeoutId = setTimeout(function () {
+            toast.classList.remove("show");
+        }, 2200);
     }
-    function guard() {
-        var guardType = document.body.getAttribute("data-guard");
-        if (guardType === "student" && !currentStudent()) {
-            window.location.href = "login.html?next=" + encodeURIComponent(location.pathname.split("/").pop());
+
+    function ensureDemoData() {
+        const courses = read(STORAGE_KEYS.courses, null);
+        if (!courses || !Array.isArray(courses) || courses.length === 0) {
+            write(STORAGE_KEYS.courses, defaultCourses.map(function (course) { return { ...course }; }));
+        }
+
+        const questions = read(STORAGE_KEYS.questions, null);
+        if (!questions || !Array.isArray(questions) || questions.length === 0) {
+            write(STORAGE_KEYS.questions, defaultQuestions.map(function (question) { return ({ ...question, options: question.options.slice() }); }));
+        }
+
+        if (!read(STORAGE_KEYS.results, null)) {
+            write(STORAGE_KEYS.results, []);
+        }
+
+        if (!read(STORAGE_KEYS.payments, null)) {
+            write(STORAGE_KEYS.payments, []);
+        }
+    }
+
+    function getCurrentSession() {
+        return read(STORAGE_KEYS.session, null);
+    }
+
+    async function apiRequest(path, init, fallback) {
+        let response;
+        try {
+            response = await fetch(path, {
+                credentials: "same-origin",
+                headers: { "Content-Type": "application/json" },
+                ...init
+            });
+        } catch (error) {
+            if (typeof fallback === "function") {
+                return fallback();
+            }
+            throw error;
+        }
+
+        const text = await response.text();
+        const payload = text ? JSON.parse(text) : {};
+        if (!response.ok) {
+            throw new Error(payload.error || payload.message || "Request failed.");
+        }
+        return payload;
+    }
+
+    function setSession(role, user) {
+        if (!user) {
+            localStorage.removeItem(STORAGE_KEYS.session);
+            return;
+        }
+
+        write(STORAGE_KEYS.session, {
+            role: role,
+            userId: user.id || user.username,
+            user: {
+                id: user.id,
+                username: user.username,
+                name: user.name,
+                email: user.email,
+                role: user.role || role,
+                phone: user.phone,
+                college: user.college,
+                registeredExams: user.registeredExams || [],
+                paymentStatus: user.paymentStatus || "Not Paid"
+            }
+        });
+    }
+
+    function currentStudent() {
+        const session = getCurrentSession();
+        if (!session || session.role !== "student") return null;
+        if (session.user && session.user.id === session.userId) return session.user;
+        return null;
+    }
+
+    function currentAdmin() {
+        const session = getCurrentSession();
+        if (!session || session.role !== "admin") return null;
+        if (session.user && (session.user.id === session.userId || session.user.username === session.userId)) return session.user;
+        return null;
+    }
+
+    function logout() {
+        setSession(null, null);
+        if (window.location.pathname.endsWith("/admin-dashboard.html") || window.location.pathname.endsWith("admin-dashboard.html")) {
+            window.location.href = "admin-login.html";
+            return;
+        }
+        window.location.href = "index.html";
+    }
+
+    function setupPasswordToggle() {
+        document.querySelectorAll("[data-toggle-password]").forEach(function (button) {
+            const target = button.closest(".password-input")?.querySelector("input");
+            if (!target) return;
+
+            button.addEventListener("click", function () {
+                const isHidden = target.type === "password";
+                target.type = isHidden ? "text" : "password";
+                button.textContent = isHidden ? "Hide" : "Show";
+            });
+        });
+    }
+
+    function setupRegister() {
+        const form = document.getElementById("registerForm");
+        if (!form) return;
+
+        if (currentStudent()) {
+            window.location.href = "dashboard.html";
+            return;
+        }
+
+        const roleSelect = document.getElementById("accountRole");
+        const roleNote = document.getElementById("roleNote");
+        function updateRoleNote() {
+            const role = roleSelect ? roleSelect.value : "student";
+            if (role === "faculty") {
+                if (roleNote) roleNote.textContent = "Faculty accounts require admin approval. Use the Student registration form for now.";
+                return;
+            }
+            if (role === "admin") {
+                if (roleNote) roleNote.textContent = "Admin accounts are managed separately. Selecting Admin will open the administrator sign in.";
+                return;
+            }
+            if (roleNote) roleNote.textContent = "Create your student account.";
+        }
+
+        updateRoleNote();
+        roleSelect && roleSelect.addEventListener("change", updateRoleNote);
+
+        form.addEventListener("submit", async function (event) {
+            event.preventDefault();
+
+            const role = roleSelect ? roleSelect.value : "student";
+            if (role === "admin") {
+                window.location.href = "admin-login.html";
+                return;
+            }
+
+            if (role === "faculty") {
+                notify("Faculty registration is not available yet. Please contact the admin to create a faculty account.", "error");
+                return;
+            }
+
+            const name = document.getElementById("name").value.trim();
+            const email = document.getElementById("email").value.trim().toLowerCase();
+            const phoneRaw = document.getElementById("phone").value.replace(/\D/g, "");
+            const college = normalizeCollege(document.getElementById("college").value);
+            const password = document.getElementById("password").value;
+            const confirmPassword = document.getElementById("confirmPassword").value;
+
+            if (name.length < 2 || !/^[0-9]{10}$/.test(phoneRaw)) {
+                notify("Enter a valid name and 10-digit phone number.", "error");
+                return;
+            }
+
+            if (!college || college.length < 2) {
+                notify("Enter a valid college name.", "error");
+                return;
+            }
+
+            if (password.length < 6) {
+                notify("Password must be at least 6 characters.", "error");
+                return;
+            }
+
+            if (password !== confirmPassword) {
+                notify("Passwords do not match.", "error");
+                return;
+            }
+
+            try {
+                const payload = await apiRequest("/api/auth/register", {
+                    method: "POST",
+                    body: JSON.stringify({
+                        name,
+                        email,
+                        phone: phoneRaw,
+                        college,
+                        password,
+                        role: "student"
+                    })
+                });
+
+                notify(payload.message || "Account created. You can now sign in.");
+                setTimeout(function () {
+                    window.location.href = "login.html";
+                }, 700);
+            } catch (error) {
+                notify(error.message || "Unable to create account.", "error");
+            }
+        });
+    }
+
+    function setupStudentLogin() {
+        const form = document.getElementById("loginForm");
+        if (!form) return;
+
+        if (currentStudent()) {
+            window.location.href = "dashboard.html";
+            return;
+        }
+
+        form.addEventListener("submit", async function (event) {
+            event.preventDefault();
+            const email = document.getElementById("email").value.trim().toLowerCase();
+            const password = document.getElementById("password").value;
+
+            try {
+                const payload = await apiRequest("/api/auth/login", {
+                    method: "POST",
+                    body: JSON.stringify({ email, password, role: "student" })
+                });
+
+                const sessionUser = payload.user || { email };
+                setSession("student", sessionUser);
+                notify(payload.message || "Login successful. Redirecting...");
+                setTimeout(function () {
+                    window.location.href = "dashboard.html";
+                }, 500);
+            } catch (error) {
+                notify(error.message || "Invalid email or password.", "error");
+            }
+        });
+    }
+
+    function setupAdminLogin() {
+        const form = document.getElementById("adminLoginForm");
+        if (!form) return;
+
+        if (currentAdmin()) {
+            window.location.href = "admin-dashboard.html";
+            return;
+        }
+
+        form.addEventListener("submit", async function (event) {
+            event.preventDefault();
+            const email = document.getElementById("adminUsername").value.trim().toLowerCase();
+            const password = document.getElementById("adminPassword").value;
+
+            try {
+                const payload = await apiRequest("/api/auth/admin-login", {
+                    method: "POST",
+                    body: JSON.stringify({ email: email, password, role: "admin" })
+                });
+
+                const adminUser = payload.user || { id: email, name: "Administrator", role: "admin" };
+                setSession("admin", adminUser);
+                notify(payload.message || "Admin access granted.");
+                setTimeout(function () {
+                    window.location.href = "admin-dashboard.html";
+                }, 500);
+            } catch (error) {
+                notify(error.message || "Invalid admin credentials.", "error");
+            }
+        });
+    }
+
+    async function setupGuards() {
+        const body = document.body;
+        const guard = body && body.dataset && body.dataset.guard;
+        const storedSession = getCurrentSession();
+        if (!guard && !storedSession) return true;
+
+        try {
+            const payload = await apiRequest("/api/auth/me");
+            if (guard && payload.user.role !== guard) throw new Error("Wrong account type.");
+            setSession(payload.user.role, payload.user);
+        } catch (error) {
+            setSession(null, null);
+            if (guard) {
+                window.location.href = guard === "admin" ? "admin-login.html" : "login.html";
+                return false;
+            }
+        }
+
+        if (guard === "student" && !currentStudent()) {
+            window.location.href = "login.html";
             return false;
         }
-        if (guardType === "admin" && localStorage.getItem("adminLogin") !== "true") {
+        if (guard === "admin" && !currentAdmin()) {
             window.location.href = "admin-login.html";
             return false;
         }
         return true;
     }
-    function bindLogout() {
-        document.querySelectorAll("[data-logout]").forEach(function (link) {
-            link.addEventListener("click", function (event) {
+
+    function setupLogoutButtons() {
+        document.querySelectorAll("[data-logout]").forEach(function (button) {
+            button.addEventListener("click", async function (event) {
                 event.preventDefault();
-                localStorage.removeItem("currentStudent");
-                localStorage.removeItem("adminLogin");
+                try {
+                    await apiRequest("/api/auth/logout", { method: "POST" });
+                } catch {}
+                setSession(null, null);
                 window.location.href = "index.html";
             });
         });
-        var toggle = document.querySelector(".nav-toggle");
-        var links = document.querySelector(".nav-links");
-        if (toggle && links) { toggle.addEventListener("click", function () { links.classList.toggle("open"); }); }
     }
-    function setupRegister() {
-        var form = document.getElementById("registerForm");
-        if (!form) return;
-        if (currentStudent()) { window.location.href = "dashboard.html"; return; }
-        form.addEventListener("submit", function (event) {
-            event.preventDefault();
-            var name = document.getElementById("name").value.trim();
-            var email = document.getElementById("email").value.trim().toLowerCase();
-            var phone = document.getElementById("phone").value.replace(/\D/g, "");
-            var college = normalizeCollege(document.getElementById("college").value);
-            var password = document.getElementById("password").value;
-            var confirm = document.getElementById("confirmPassword").value;
-            if (name.length < 2 || !/^[0-9]{10}$/.test(phone)) return notify("Enter a valid 10-digit Indian phone number.", "error");
-            if (!college) return notify("Select or enter your college name.", "error");
-            if (college.length < 2) return notify("Enter a valid college name.", "error");
-            if (password.length < 6) return notify("Password must be at least 6 characters.", "error");
-            if (password !== confirm) return notify("Passwords do not match.", "error");
-            var students = read("students", []);
-            if (students.some(function (student) { return student.email === email; })) return notify("An account with this email already exists.", "error");
-            var student = { id: id("stu_"), name: name, email: email, phone: "+91 " + phone, college: college, password: password, registeredExams: [], paymentStatus: "Not Paid", createdAt: new Date().toISOString() };
-            students.push(student);
-            write("students", students);
-            notify("Account created. You can now sign in.");
-            window.setTimeout(function () { window.location.href = "login.html"; }, 700);
-        });
+
+    function getCourses() {
+        const stored = read(STORAGE_KEYS.courses, defaultCourses);
+        return Array.isArray(stored) ? stored : defaultCourses;
     }
-    function setupLogin() {
-        var form = document.getElementById("loginForm");
-        if (!form) return;
-        if (currentStudent()) { window.location.href = "dashboard.html"; return; }
-        form.addEventListener("submit", function (event) {
-            event.preventDefault();
-            var email = document.getElementById("email").value.trim().toLowerCase();
-            var password = document.getElementById("password").value;
-            var student = read("students", []).find(function (item) { return item.email === email && item.password === password; });
-            if (!student) return notify("Email or password is incorrect.", "error");
-            write("currentStudent", student);
-            var next = new URLSearchParams(location.search).get("next");
-            window.location.href = next || "dashboard.html";
-        });
+
+    function getQuestions() {
+        const stored = read(STORAGE_KEYS.questions, defaultQuestions);
+        return Array.isArray(stored) ? stored : defaultQuestions;
     }
-    function setupAdminLogin() {
-        var form = document.getElementById("adminLoginForm");
-        if (!form) return;
-        if (localStorage.getItem("adminLogin") === "true") { window.location.href = "admin-dashboard.html"; return; }
-        form.addEventListener("submit", function (event) {
-            event.preventDefault();
-            var username = document.getElementById("adminUsername").value.trim().toLowerCase();
-            var password = document.getElementById("adminPassword").value;
-            if ((username === "admin" || username === "admine" || username === "admin@onlineexam.com") && password === "admin123") {
-                localStorage.setItem("adminLogin", "true");
-                window.location.href = "admin-dashboard.html";
-            } else notify("Use admin / admin123 to access the demo panel.", "error");
-        });
-    }
-    function setupPasswordToggles() {
-        document.querySelectorAll("[data-toggle-password]").forEach(function (button) {
-            button.addEventListener("click", function () {
-                var input = document.getElementById(button.getAttribute("data-toggle-password"));
-                if (!input) return;
-                var showing = input.type === "text";
-                input.type = showing ? "password" : "text";
-                button.textContent = showing ? "Show" : "Hide";
-                button.setAttribute("aria-label", showing ? "Show password" : "Hide password");
-            });
-        });
-    }
-    function setupDashboard() {
-        var student = currentStudent();
+
+    async function renderStudentDashboard() {
+        let student = currentStudent();
         if (!student) return;
-        var results = read("results", []).filter(function (result) { return result.email === student.email; });
-        var exams = student.registeredExams || [];
-        var set = function (idValue, value) {
-            var element = document.getElementById(idValue);
-            if (!element) return;
-            if (element.tagName === "INPUT" || element.tagName === "TEXTAREA" || element.tagName === "SELECT") element.value = value;
-            else element.textContent = value;
-        };
-        set("welcomeName", student.name.split(" ")[0]);
-        set("registeredCount", exams.length);
-        set("completedCount", results.length);
-        set("averageScore", results.length ? Math.round(results.reduce(function (sum, result) { return sum + Number(result.percentage); }, 0) / results.length) + "%" : "—");
-        set("paymentState", student.paymentStatus === "Paid" ? "Paid" : "Pending");
-        var list = document.getElementById("upcomingList");
-        if (list) list.innerHTML = exams.length ? exams.map(function (exam) { return "<li><span>" + text(exam) + "</span><a href=\"exam.html?exam=" + encodeURIComponent(exam) + "\">Start when ready →</a></li>"; }).join("") : "<li class=\"empty-state\">No exams registered yet. <a href=\"exam.html\">Browse exams</a></li>";
+
+        try {
+            const payload = await apiRequest("/api/students/me", {}, function () { return { data: student }; });
+            student = { ...student, ...payload.data };
+            setSession("student", student);
+        } catch (error) {
+            notify(error.message || "Unable to load your profile.", "error");
+        }
+
+        let results = read(STORAGE_KEYS.results, []);
+        try {
+            const payload = await apiRequest("/api/results", {}, function () { return { data: results }; });
+            results = payload.data;
+            write(STORAGE_KEYS.results, results);
+        } catch (error) {
+            notify(error.message || "Unable to load your results.", "error");
+        }
+        const resultRows = results.filter(function (result) {
+            return result.studentId === student.id;
+        });
+
+        const registeredCount = document.getElementById("registeredCount");
+        const completedCount = document.getElementById("completedCount");
+        const averageScore = document.getElementById("averageScore");
+        const paymentState = document.getElementById("paymentState");
+        const welcomeName = document.getElementById("welcomeName");
+        const upcomingList = document.getElementById("upcomingList");
+
+        if (welcomeName) welcomeName.textContent = student.name.split(" ")[0];
+        if (registeredCount) registeredCount.textContent = String((student.registeredExams || []).length);
+
+        const completed = resultRows.length;
+        if (completedCount) completedCount.textContent = String(completed);
+
+        if (averageScore) {
+            if (!resultRows.length) averageScore.textContent = "—";
+            else {
+                const avg = Math.round(resultRows.reduce(function (sum, row) { return sum + Number(row.percentage || 0); }, 0) / resultRows.length);
+                averageScore.textContent = avg + "%";
+            }
+        }
+
+        if (paymentState) paymentState.textContent = student.paymentStatus || "Pending";
+
+        if (upcomingList) {
+            const exams = student.registeredExams && student.registeredExams.length ? student.registeredExams : [];
+            if (!exams.length) {
+                upcomingList.innerHTML = "<li class='empty'>No exams enrolled yet. Browse the catalog to get started.</li>";
+                return;
+            }
+
+            upcomingList.replaceChildren(...exams.map(function (exam) {
+                const examData = typeof exam === "string" ? { id: exam, name: exam } : exam;
+                const item = document.createElement("li");
+                const name = document.createElement("strong");
+                const link = document.createElement("a");
+                name.textContent = examData.name || "Assessment";
+                link.href = "take-exam.html?course=" + encodeURIComponent(examData.id);
+                link.textContent = "Start assessment";
+                item.append(name, link);
+                return item;
+            }));
+        }
     }
-    function setupExamRegistration() {
-        var grid = document.getElementById("examOptions");
-        if (!grid) return;
-        var student = currentStudent();
-        var selected = read("examCart", []);
-        grid.innerHTML = catalog.map(function (exam) {
-            var checked = selected.some(function (item) { return item && (item.id === exam.id || item === exam.id || item.name === exam.name); });
-            return "<label class=\"exam-option\"><input type=\"checkbox\" class=\"exam-choice\" value=\"" + text(exam.id) + "\" " + (checked ? "checked" : "") + "><span class=\"exam-icon\">" + text(exam.icon) + "</span><span class=\"exam-info\"><strong>" + text(exam.name) + "</strong><small>" + text(exam.category) + " · " + text(exam.duration) + "</small></span><b>" + money(exam.fee) + "</b></label>";
-        }).join("");
-        var courseCount = document.getElementById("courseCount");
-        if (courseCount) courseCount.textContent = catalog.length + (catalog.length === 1 ? " subject" : " subjects");
-        if (!catalog.length) grid.innerHTML = "<p class=\"empty-state\">No courses are available right now. Please check back later.</p>";
-        var discount = document.getElementById("discountPercent");
-        var total = document.getElementById("total");
-        var discountAmount = document.getElementById("discount");
-        var finalAmount = document.getElementById("final");
-        function calculate() {
-            var choices = Array.from(document.querySelectorAll(".exam-choice:checked")).map(function (input) { return catalog.find(function (exam) { return exam.id === input.value; }); }).filter(Boolean);
-            var subtotal = choices.reduce(function (sum, exam) { return sum + exam.fee; }, 0);
-            var percent = Math.min(100, Math.max(0, Number(discount && discount.value) || 0));
-            var reduction = subtotal * percent / 100;
-            if (total) total.textContent = money(subtotal);
-            if (discountAmount) discountAmount.textContent = money(reduction);
-            if (finalAmount) finalAmount.textContent = money(subtotal - reduction);
-            return { choices: choices, subtotal: subtotal, discount: reduction, amount: subtotal - reduction };
+
+    async function renderStudentResults() {
+        const student = currentStudent();
+        if (!student) return;
+
+        let results;
+        try {
+            const payload = await apiRequest("/api/results", {}, function () { return { data: read(STORAGE_KEYS.results, []) }; });
+            results = payload.data;
+            write(STORAGE_KEYS.results, results);
+        } catch (error) {
+            results = read(STORAGE_KEYS.results, []);
         }
-        function updateSelection() {
-            grid.querySelectorAll(".exam-option").forEach(function (option) {
-                var input = option.querySelector(".exam-choice");
-                option.classList.toggle("selected", Boolean(input && input.checked));
+        const rows = results.filter(function (row) {
+            return row.studentId === student.id;
+        });
+
+        const resultRows = document.getElementById("resultRows");
+        if (!resultRows) return;
+
+        renderTextTable(resultRows, rows.map(function (row) {
+            return [row.examName, row.score, row.percentage + "%", row.status, new Date(row.submittedAt).toLocaleDateString()];
+        }), "No results yet. Complete an exam to see your performance.", 5);
+    }
+
+    function renderProfile() {
+        const student = currentStudent();
+        if (!student) return;
+
+        const profileName = document.getElementById("profileName");
+        const profileEmail = document.getElementById("profileEmail");
+        const profileCollege = document.getElementById("profileCollege");
+        const profilePhone = document.getElementById("profilePhone");
+        const paymentStatus = document.getElementById("paymentStatus");
+        const profilePaymentMethod = document.getElementById("profilePaymentMethod");
+        const transactionId = document.getElementById("transactionId");
+        const profileExams = document.getElementById("profileExams");
+        const editName = document.getElementById("editName");
+        const editPhone = document.getElementById("editPhone");
+        const editCollege = document.getElementById("editCollege");
+
+        if (profileName) profileName.textContent = student.name;
+        if (profileEmail) profileEmail.textContent = student.email;
+        if (profileCollege) profileCollege.textContent = student.college;
+        if (profilePhone) profilePhone.textContent = student.phone;
+        if (paymentStatus) paymentStatus.textContent = student.paymentStatus || "Not Paid";
+        if (profilePaymentMethod) profilePaymentMethod.textContent = student.paymentMethod || "—";
+        if (transactionId) transactionId.textContent = student.transactionId || "—";
+        if (editName) editName.value = student.name;
+        if (editPhone) editPhone.value = student.phone ? student.phone.replace("+91 ", "") : "";
+        if (editCollege) editCollege.value = student.college;
+
+        if (profileExams) {
+            if (!student.registeredExams || !student.registeredExams.length) {
+                const empty = document.createElement("span");
+                empty.className = "tag";
+                empty.textContent = "No exams yet";
+                profileExams.replaceChildren(empty);
+            } else {
+                profileExams.replaceChildren(...student.registeredExams.map(function (exam) {
+                    const tag = document.createElement("span");
+                    tag.className = "tag";
+                    tag.textContent = exam.name || exam;
+                    return tag;
+                }));
+            }
+        }
+    }
+
+    function renderTextTable(body, records, emptyMessage, columnCount) {
+        const rows = records.map(function (record) {
+            const row = document.createElement("tr");
+            record.forEach(function (value) {
+                const cell = document.createElement("td");
+                cell.textContent = value == null ? "" : String(value);
+                row.append(cell);
             });
-            calculate();
+            return row;
+        });
+        if (!rows.length) {
+            const row = document.createElement("tr");
+            const cell = document.createElement("td");
+            cell.colSpan = columnCount;
+            cell.textContent = emptyMessage;
+            row.append(cell);
+            rows.push(row);
         }
-        grid.addEventListener("change", updateSelection);
-        if (discount) discount.addEventListener("input", calculate);
-        updateSelection();
-        var form = document.getElementById("registrationForm");
-        if (form) form.addEventListener("submit", function (event) {
+        body.replaceChildren(...rows);
+    }
+
+    function setupProfileForm() {
+        const form = document.getElementById("profileForm");
+        if (!form) return;
+
+        form.addEventListener("submit", async function (event) {
             event.preventDefault();
-            var details = calculate();
-            if (!student) return notify("Please sign in to register for an exam.", "error");
-            if (!details.choices.length) return notify("Choose at least one exam.", "error");
-            write("examCart", details.choices.map(function (exam) { return exam; }));
-            write("pendingPayment", { email: student.email, exams: details.choices.map(function (exam) { return exam.name; }), subtotal: details.subtotal, discount: details.discount, amount: details.amount, createdAt: new Date().toISOString() });
+            const student = currentStudent();
+            if (!student) return;
+
+            const name = document.getElementById("editName").value.trim();
+            const phone = document.getElementById("editPhone").value.replace(/\D/g, "");
+            const college = normalizeCollege(document.getElementById("editCollege").value);
+
+            if (name.length < 2 || !/^[0-9]{10}$/.test(phone)) {
+                notify("Enter a valid name and 10-digit phone number.", "error");
+                return;
+            }
+
+            const students = read(STORAGE_KEYS.students, []);
+            try {
+                const payload = await apiRequest("/api/students/me", {
+                    method: "PUT",
+                    body: JSON.stringify({ name, phone, college })
+                }, function () {
+                    const index = students.findIndex(function (item) { return item.id === student.id; });
+                    if (index === -1) throw new Error("Profile updates require the Examly server.");
+                    students[index] = { ...students[index], name, phone: "+91 " + phone, college };
+                    write(STORAGE_KEYS.students, students);
+                    return { data: students[index] };
+                });
+                const updatedStudent = { ...student, ...payload.data };
+                const index = students.findIndex(function (item) { return item.id === student.id; });
+                if (index !== -1) {
+                    students[index] = updatedStudent;
+                    write(STORAGE_KEYS.students, students);
+                }
+                setSession("student", updatedStudent);
+                renderProfile();
+                notify("Profile updated successfully.");
+            } catch (error) {
+                notify(error.message || "Unable to update your profile.", "error");
+            }
+        });
+    }
+
+    async function setupCourseSelection() {
+        const form = document.getElementById("registrationForm");
+        if (!form) return;
+
+        let courses = getCourses();
+        try {
+            const payload = await apiRequest("/api/courses", {}, function () { return { data: courses }; });
+            courses = payload.data;
+            write(STORAGE_KEYS.courses, courses);
+        } catch (error) {
+            notify(error.message || "Unable to load the course catalog.", "error");
+        }
+        const examOptions = document.getElementById("examOptions");
+        const countLabel = document.getElementById("courseCount");
+        const total = document.getElementById("total");
+        const discount = document.getElementById("discount");
+        const final = document.getElementById("final");
+        const discountInput = document.getElementById("discountPercent");
+        const selectedMap = new Map();
+
+        if (countLabel) countLabel.textContent = courses.length + " courses available";
+
+        examOptions.replaceChildren(...courses.map(function (course) {
+            const label = document.createElement("label");
+            const input = document.createElement("input");
+            const content = document.createElement("span");
+            const name = document.createElement("strong");
+            const meta = document.createElement("small");
+            const fee = document.createElement("b");
+            label.className = "exam-option";
+            input.type = "checkbox";
+            input.value = course.id;
+            input.dataset.fee = String(course.fee);
+            input.dataset.name = course.name;
+            name.textContent = course.icon + " " + course.name;
+            meta.textContent = course.category + " · " + course.duration;
+            fee.textContent = "₹" + course.fee;
+            content.append(name, meta, fee);
+            label.append(input, content);
+            return label;
+        }));
+
+        function updateSummary() {
+            const selected = Array.from(examOptions.querySelectorAll("input:checked"));
+            const subtotal = selected.reduce(function (sum, item) {
+                return sum + Number(item.dataset.fee || 0);
+            }, 0);
+            const percent = Number(discountInput && discountInput.value ? discountInput.value : 0);
+            const discountAmount = Math.round((subtotal * percent) / 100);
+            const totalAmount = Math.max(0, subtotal - discountAmount);
+            if (total) total.textContent = "₹" + subtotal;
+            if (discount) discount.textContent = "₹" + discountAmount;
+            if (final) final.textContent = "₹" + totalAmount;
+
+            selectedMap.clear();
+            selected.forEach(function (item) {
+                selectedMap.set(item.value, { id: item.value, name: item.dataset.name, fee: Number(item.dataset.fee || 0) });
+            });
+        }
+
+        examOptions.addEventListener("change", updateSummary);
+        if (discountInput) discountInput.addEventListener("input", updateSummary);
+        updateSummary();
+
+        form.addEventListener("submit", async function (event) {
+            event.preventDefault();
+            const selected = Array.from(selectedMap.values());
+            if (!selected.length) {
+                notify("Select at least one exam before continuing.", "error");
+                return;
+            }
+
+            write(STORAGE_KEYS.selectedExams, selected);
             window.location.href = "payment.html";
         });
     }
-    function setupPayment() {
-        var form = document.getElementById("paymentForm");
+
+    function setupPaymentPage() {
+        const form = document.getElementById("paymentForm");
         if (!form) return;
-        var student = currentStudent();
-        var pending = read("pendingPayment", null);
-        if (!student || !pending || pending.email !== student.email) {
-            notify("Select an exam before continuing to payment.", "error");
-            window.setTimeout(function () { window.location.href = "exam.html"; }, 500);
+
+        const student = currentStudent();
+        if (!student) {
+            window.location.href = "login.html";
             return;
         }
-        var set = function (idValue, value) {
-            var element = document.getElementById(idValue);
-            if (!element) return;
-            if (element.tagName === "INPUT" || element.tagName === "TEXTAREA" || element.tagName === "SELECT") element.value = value;
-            else element.textContent = value;
-        };
-        set("studentName", student.name); set("studentEmail", student.email); set("amount", money(pending.amount));
-        set("subtotal", money(pending.subtotal)); set("discount", money(pending.discount));
-        set("selectedExams", pending.exams.join(", "));
-        form.addEventListener("submit", function (event) {
-            event.preventDefault();
-            var name = document.getElementById("studentName").value.trim();
-            var email = document.getElementById("studentEmail").value.trim().toLowerCase();
-            var method = document.getElementById("paymentMethod").value;
-            var transactionId = "TXN-" + Date.now().toString().slice(-8);
-            if (!name) return notify("Enter the student name.", "error");
-            if (!email) return notify("Enter the email address.", "error");
-            if (!method) return notify("Select a payment method.", "error");
-            var payment = { id: id("pay_"), email: email, name: name, exams: pending.exams, amount: pending.amount, method: method, status: "Paid", paymentStatus: "Paid", transactionId: transactionId, date: new Date().toISOString() };
-            var payments = read("payments", []); payments.push(payment); write("payments", payments);
-            var registrations = read("examRegistrations", []); registrations.push({ id: id("reg_"), email: email, name: name, exams: pending.exams, amount: pending.amount, status: "Paid", paymentId: payment.id, date: payment.date }); write("examRegistrations", registrations);
-            student.registeredExams = Array.from(new Set((student.registeredExams || []).concat(pending.exams)));
-            student.paymentStatus = "Paid"; student.transactionId = transactionId; student.paymentMethod = method; student.amountPaid = pending.amount;
-            saveStudent(student); localStorage.removeItem("pendingPayment"); localStorage.removeItem("examCart");
-            notify("Payment successful.");
-            window.setTimeout(function () { window.location.href = "dashboard.html"; }, 650);
-        });
-    }
-    function setupProfile() {
-        var student = currentStudent(); if (!student) return;
-        var set = function (idValue, value) { var element = document.getElementById(idValue); if (element) element.textContent = value || "—"; };
-        set("profileName", student.name); set("profileEmail", student.email); set("profilePhone", student.phone); set("profileCollege", student.college); set("paymentStatus", student.paymentStatus);
-        set("transactionId", student.transactionId); set("profilePaymentMethod", student.paymentMethod);
-        var avatar = document.getElementById("profileAvatar");
-        if (avatar) {
-            avatar.textContent = (student.name || "S").charAt(0).toUpperCase();
-            avatar.style.backgroundImage = student.profilePhoto ? "url('" + student.profilePhoto + "')" : "";
-            avatar.style.backgroundPosition = "center"; avatar.style.backgroundSize = "cover";
-            avatar.style.color = student.profilePhoto ? "transparent" : "";
-        }
-        var exams = document.getElementById("profileExams");
-        if (exams) exams.innerHTML = (student.registeredExams || []).map(function (exam) { return "<span class=\"tag\">" + text(exam) + "</span>"; }).join("") || "<span class=\"muted\">No exams registered</span>";
-        var photoUpload = document.getElementById("photoUpload");
-        if (photoUpload && !photoUpload.dataset.bound) {
-            photoUpload.dataset.bound = "true";
-            photoUpload.addEventListener("change", function () {
-                var file = photoUpload.files[0];
-                if (!file) return;
-                if (!file.type.match(/^image\//) || file.size > 2 * 1024 * 1024) {
-                    photoUpload.value = ""; return notify("Choose an image smaller than 2 MB.", "error");
-                }
-                var reader = new FileReader();
-                reader.onload = function () { student.profilePhoto = reader.result; saveStudent(student); setupProfile(); notify("Profile photo updated."); };
-                reader.readAsDataURL(file);
-            });
-        }
-        var form = document.getElementById("profileForm");
-        if (form && !form.dataset.bound) {
-            form.dataset.bound = "true";
-            document.getElementById("editName").value = student.name; document.getElementById("editPhone").value = (student.phone || "").replace(/\D/g, "").slice(-10);
-            var editCollege = document.getElementById("editCollege"); if (editCollege) editCollege.value = student.college || "";
-            form.addEventListener("submit", function (event) {
-                event.preventDefault();
-                var name = document.getElementById("editName").value.trim();
-                var phone = document.getElementById("editPhone").value.replace(/\D/g, "");
-                var college = normalizeCollege(document.getElementById("editCollege").value);
-                if (name.length < 2 || !/^[0-9]{10}$/.test(phone)) return notify("Enter a valid name and 10-digit phone number.", "error");
-                if (!college) return notify("Select or enter your college name.", "error");
-                student.name = name;
-                student.phone = "+91 " + phone;
-                student.college = college;
-                saveStudent(student);
-                notify("Profile updated.");
-                setupProfile();
-            });
-        }
-    }
-    function setupResult() {
-        var student = currentStudent(); if (!student) return;
-        var results = read("results", []).filter(function (result) { return result.email === student.email; }).reverse();
-        var body = document.getElementById("resultRows"); if (!body) return;
-        body.innerHTML = results.length ? results.map(function (result) { return "<tr><td>" + text(result.exam || "Online assessment") + "</td><td>" + result.score + "/" + result.total + "</td><td>" + result.percentage + "%</td><td><span class=\"status " + (result.status === "Pass" ? "success" : "danger") + "\">" + result.status + "</span></td><td>" + new Date(result.date).toLocaleDateString() + "</td></tr>"; }).join("") : "<tr><td colspan=\"5\" class=\"empty-state\">No results yet. Complete an exam to see your score.</td></tr>";
-    }
-    function setupExam() {
-        var questions = read("questions", defaultQuestions), student = currentStudent();
-        if (!questions.length) { notify("No questions are available yet.", "error"); return; }
-        var container = document.getElementById("questionContainer"); if (!container) return;
-        var examName = new URLSearchParams(location.search).get("exam") || "Online assessment";
-        var startedAt = new Date().toISOString();
-        saveProgress({
-            email: student.email,
-            name: student.name,
-            college: student.college || "",
-            exam: examName,
-            status: "In Progress",
-            score: null,
-            percentage: null,
-            attempted: 0,
-            unanswered: questions.length,
-            total: questions.length,
-            startedAt: startedAt,
-            completedAt: null
-        });
-        container.innerHTML = questions.map(function (question, index) {
-            return "<article class=\"question-card\"><div class=\"question-number\">Q" + (index + 1) + "</div><h3>" + text(question.question) + "</h3><div class=\"option-grid\">" + question.options.map(function (option, optionIndex) { return "<label><input type=\"radio\" name=\"question" + index + "\" value=\"" + optionIndex + "\"><span>" + String.fromCharCode(65 + optionIndex) + "</span>" + text(option) + "</label>"; }).join("") + "</div></article>";
-        }).join("");
-        var seconds = 30 * 60, timer = document.getElementById("timer"), submitted = false;
-        function submitExam() {
-            if (submitted) return; submitted = true;
-            var score = questions.reduce(function (sum, question, index) { var answer = document.querySelector("input[name=\"question" + index + "\"]:checked"); return sum + (answer && Number(answer.value) === Number(question.answer) - 1 ? 1 : 0); }, 0);
-            var percentage = questions.length ? (score / questions.length * 100).toFixed(2) : "0.00";
-            var completedAt = new Date().toISOString();
-            var result = { id: id("res_"), email: student.email, name: student.name, exam: examName, score: score, total: questions.length, percentage: percentage, status: Number(percentage) >= 40 ? "Pass" : "Fail", date: completedAt };
-            var results = read("results", []); results.push(result); write("results", results); write("examResult", result);
-            saveProgress({
-                email: student.email,
-                name: student.name,
-                college: student.college || "",
-                exam: examName,
-                status: "Completed",
-                score: score,
-                percentage: percentage,
-                attempted: questions.filter(function (question, questionIndex) {
-                    return document.querySelector("input[name=\"question" + questionIndex + "\"]:checked");
-                }).length,
-                unanswered: questions.length - questions.filter(function (question, questionIndex) {
-                    return document.querySelector("input[name=\"question" + questionIndex + "\"]:checked");
-                }).length,
-                total: questions.length,
-                startedAt: startedAt,
-                completedAt: completedAt
-            });
-            notify("Exam submitted successfully."); window.setTimeout(function () { window.location.href = "result.html"; }, 650);
-        }
-        window.submitExam = submitExam;
-        var interval = window.setInterval(function () { var minutes = Math.floor(seconds / 60), remainder = seconds % 60; if (timer) timer.textContent = minutes + ":" + (remainder < 10 ? "0" : "") + remainder; if (seconds-- <= 0) { window.clearInterval(interval); submitExam(); } }, 1000);
-        var form = document.getElementById("examForm"); if (form) form.addEventListener("submit", function (event) { event.preventDefault(); if (confirm("Submit your exam now?")) submitExam(); });
-    }
-    function setupAdminDashboard() {
-        var students = read("students", []), payments = read("payments", []), results = read("results", []), questions = read("questions", defaultQuestions);
-        [["adminStudents", students.length], ["adminPayments", payments.length], ["adminResults", results.length], ["adminQuestions", questions.length]].forEach(function (item) { var element = document.getElementById(item[0]); if (element) element.textContent = item[1]; });
-        var courseCount = document.getElementById("adminCourses");
-        if (courseCount) courseCount.textContent = catalog.length;
-    }
-    function setupCourses() {
-        var form = document.getElementById("courseForm");
-        var list = document.getElementById("courseList");
-        if (!form || !list) return;
-        var editingId = null;
-        var submitButton = form.querySelector("button[type=\"submit\"]");
-        var cancelButton = document.getElementById("cancelCourseEdit");
-        var formTitle = document.getElementById("courseFormTitle");
-        var notice = document.getElementById("courseStorageNotice");
-        if (notice && !courseApiAvailable) notice.textContent = "The Express API is unavailable. Changes on this page will be saved in this browser only.";
 
-        function resetForm() {
-            editingId = null;
-            form.reset();
-            formTitle.textContent = "Add a course";
-            submitButton.textContent = "Add course";
-            cancelButton.textContent = "Clear form";
+        const selectedExams = read(STORAGE_KEYS.selectedExams, []);
+        const selectedExamsLabel = document.getElementById("selectedExams");
+        const subtotal = document.getElementById("subtotal");
+        const amount = document.getElementById("amount");
+        const discountText = document.getElementById("discount");
+        const studentName = document.getElementById("studentName");
+        const studentEmail = document.getElementById("studentEmail");
+
+        if (selectedExams.length === 0) {
+            notify("No exam is selected for payment. Please choose an exam first.", "error");
+            setTimeout(function () { window.location.href = "exam.html"; }, 600);
+            return;
         }
-        function render() {
-            list.innerHTML = catalog.length ? catalog.map(function (course) {
-                return "<article class=\"question-admin\"><div><strong><span class=\"course-list-icon\">" + text(course.icon) + "</span>" + text(course.name) + "</strong><p>" + text(course.category) + " · " + text(course.duration) + " · " + money(course.fee) + "</p></div><div class=\"question-actions\"><button class=\"btn btn-ghost\" type=\"button\" data-edit-course=\"" + text(course.id) + "\">Edit</button><button class=\"btn btn-ghost danger-text\" type=\"button\" data-delete-course=\"" + text(course.id) + "\">Delete</button></div></article>";
-            }).join("") : "<p class=\"empty-state\">No courses yet. Add one using the form.</p>";
-            list.querySelectorAll("[data-edit-course]").forEach(function (button) {
+
+        const subtotalAmount = selectedExams.reduce(function (sum, exam) { return sum + Number(exam.fee || 0); }, 0);
+        const totalAmount = subtotalAmount;
+
+        if (selectedExamsLabel) selectedExamsLabel.textContent = selectedExams.map(function (exam) { return exam.name; }).join(", ");
+        if (subtotal) subtotal.textContent = "₹" + subtotalAmount;
+        if (amount) amount.textContent = "₹" + totalAmount;
+        if (discountText) discountText.textContent = "₹0";
+        if (studentName) studentName.value = student.name;
+        if (studentEmail) studentEmail.value = student.email;
+
+        form.addEventListener("submit", async function (event) {
+            event.preventDefault();
+            const method = document.getElementById("paymentMethod").value;
+            if (!method) {
+                notify("Please choose a payment method.", "error");
+                return;
+            }
+
+            let updatedStudent;
+            try {
+                const registration = await apiRequest("/api/students/me/registrations", {
+                    method: "POST",
+                    body: JSON.stringify({ courseIds: selectedExams.map(function (exam) { return exam.id; }) })
+                });
+                updatedStudent = { ...student, ...registration.data };
+            } catch (error) {
+                notify(error.message || "Unable to save your registration.", "error");
+                return;
+            }
+
+            const students = read(STORAGE_KEYS.students, []);
+            const studentIndex = students.findIndex(function (item) { return item.id === student.id; });
+
+            if (studentIndex !== -1) {
+                students[studentIndex] = updatedStudent;
+                write(STORAGE_KEYS.students, students);
+            }
+            setSession("student", updatedStudent);
+
+            write(STORAGE_KEYS.selectedExams, []);
+            notify("Demo registration saved. No payment was processed.");
+            setTimeout(function () {
+                window.location.href = "dashboard.html";
+            }, 700);
+        });
+    }
+
+    async function renderAdminDashboard() {
+        const studentCount = document.getElementById("adminStudents");
+        const paymentCount = document.getElementById("adminPayments");
+        const resultCount = document.getElementById("adminResults");
+        const questionCount = document.getElementById("adminQuestions");
+        const courseCount = document.getElementById("adminCourses");
+
+        try {
+            const payload = await apiRequest("/api/admin/summary", {}, function () {
+                return { data: {
+                    students: read(STORAGE_KEYS.students, []).length,
+                    payments: read(STORAGE_KEYS.payments, []).length,
+                    results: read(STORAGE_KEYS.results, []).length,
+                    questions: getQuestions().length,
+                    courses: getCourses().length
+                } };
+            });
+            if (studentCount) studentCount.textContent = String(payload.data.students);
+            if (paymentCount) paymentCount.textContent = String(payload.data.payments);
+            if (resultCount) resultCount.textContent = String(payload.data.results);
+            if (questionCount) questionCount.textContent = String(payload.data.questions);
+            if (courseCount) courseCount.textContent = String(payload.data.courses);
+            return;
+        } catch (error) {
+            notify(error.message || "Unable to load the admin summary.", "error");
+        }
+
+        const students = read(STORAGE_KEYS.students, []);
+        const wallets = read(STORAGE_KEYS.payments, []);
+        const results = read(STORAGE_KEYS.results, []);
+        const questions = getQuestions();
+        const courses = getCourses();
+
+        if (studentCount) studentCount.textContent = String(students.length);
+        if (paymentCount) paymentCount.textContent = String(wallets.length);
+        if (resultCount) resultCount.textContent = String(results.length);
+        if (questionCount) questionCount.textContent = String(questions.length);
+        if (courseCount) courseCount.textContent = String(courses.length);
+    }
+
+    function renderCourseManagement() {
+        const form = document.getElementById("courseForm");
+        if (!form) return;
+
+        const list = document.getElementById("courseList");
+        if (!list) return;
+
+        async function renderCourses() {
+            let courses;
+            try {
+                const payload = await apiRequest("/api/courses", {}, function () { return { data: getCourses() }; });
+                courses = payload.data;
+                write(STORAGE_KEYS.courses, courses);
+            } catch (error) {
+                list.textContent = error.message || "Unable to load courses.";
+                return;
+            }
+
+            list.replaceChildren(...courses.map(function (course) {
+                const item = document.createElement("div");
+                const details = document.createElement("div");
+                const name = document.createElement("strong");
+                const summary = document.createElement("p");
+                const actions = document.createElement("div");
+                const editButton = document.createElement("button");
+                const deleteButton = document.createElement("button");
+                item.className = "list-card";
+                name.textContent = course.icon + " " + course.name;
+                summary.textContent = course.category + " · " + course.duration + " · ₹" + course.fee;
+                details.append(name, summary);
+                actions.className = "list-actions";
+                editButton.type = "button";
+                editButton.dataset.courseEdit = course.id;
+                editButton.textContent = "Edit";
+                deleteButton.type = "button";
+                deleteButton.className = "danger";
+                deleteButton.dataset.courseDelete = course.id;
+                deleteButton.textContent = "Delete";
+                actions.append(editButton, deleteButton);
+                item.append(details, actions);
+                return item;
+            }));
+            if (!courses.length) {
+                const empty = document.createElement("p");
+                empty.className = "muted";
+                empty.textContent = "No courses available.";
+                list.append(empty);
+            }
+
+            document.querySelectorAll("[data-course-edit]").forEach(function (button) {
                 button.addEventListener("click", function () {
-                    var course = catalog.find(function (item) { return item.id === button.getAttribute("data-edit-course"); });
+                    const course = getCourses().find(function (item) { return item.id === button.dataset.courseEdit; });
                     if (!course) return;
-                    editingId = course.id;
                     document.getElementById("courseName").value = course.name;
                     document.getElementById("courseCategory").value = course.category;
                     document.getElementById("courseDuration").value = course.duration;
                     document.getElementById("courseFee").value = course.fee;
                     document.getElementById("courseIcon").value = course.icon;
-                    formTitle.textContent = "Edit course";
-                    submitButton.textContent = "Update course";
-                    cancelButton.textContent = "Cancel edit";
-                    document.getElementById("courseName").focus();
+                    form.dataset.editingId = course.id;
+                    const title = document.getElementById("courseFormTitle");
+                    if (title) title.textContent = "Edit course";
                 });
             });
-            list.querySelectorAll("[data-delete-course]").forEach(function (button) {
+
+            document.querySelectorAll("[data-course-delete]").forEach(function (button) {
                 button.addEventListener("click", async function () {
-                    var courseId = button.getAttribute("data-delete-course");
-                    var course = catalog.find(function (item) { return item.id === courseId; });
-                    if (!course || !window.confirm("Delete " + course.name + "? This will remove it from the available courses.")) return;
+                    const courseId = button.dataset.courseDelete;
                     try {
-                        if (courseApiAvailable) await courseRequest("DELETE", courseId);
-                        catalog = catalog.filter(function (item) { return item.id !== courseId; });
-                        write("courses", catalog);
-                        if (editingId === courseId) resetForm();
-                        render();
-                        notify(courseApiAvailable ? "Course deleted." : "Course deleted in this browser.");
+                        await apiRequest("/api/courses/" + encodeURIComponent(courseId), { method: "DELETE" });
                     } catch (error) {
-                        notify(error.message, "error");
+                        notify(error.message || "Unable to remove course.", "error");
+                        return;
                     }
+                    const coursesAfter = getCourses().filter(function (item) { return item.id !== button.dataset.courseDelete; });
+                    write(STORAGE_KEYS.courses, coursesAfter);
+                    await renderCourses();
+                    notify("Course removed.");
                 });
             });
         }
+
         form.addEventListener("submit", async function (event) {
             event.preventDefault();
-            var wasEditing = Boolean(editingId);
-            var course = {
-                name: document.getElementById("courseName").value.trim(),
-                category: document.getElementById("courseCategory").value.trim(),
-                duration: document.getElementById("courseDuration").value.trim(),
-                fee: Number(document.getElementById("courseFee").value),
-                icon: document.getElementById("courseIcon").value.trim()
-            };
-            if (!course.name || !course.category || !course.duration || !course.icon || !Number.isFinite(course.fee) || course.fee < 0) {
-                return notify("Complete all course fields and enter a valid fee.", "error");
+            const name = document.getElementById("courseName").value.trim();
+            const category = document.getElementById("courseCategory").value.trim();
+            const duration = document.getElementById("courseDuration").value.trim();
+            const fee = Number(document.getElementById("courseFee").value);
+            const icon = document.getElementById("courseIcon").value.trim();
+
+            if (!name || !category || !duration || !icon || Number.isNaN(fee)) {
+                notify("Please complete all course fields.", "error");
+                return;
             }
-            if (catalog.some(function (item) { return item.name.toLowerCase() === course.name.toLowerCase() && item.id !== editingId; })) {
-                return notify("A course with this name already exists.", "error");
-            }
+
+            const editingId = form.dataset.editingId;
+            const payload = { id: editingId || id("course_"), name, category, duration, fee, icon };
+
             try {
-                if (courseApiAvailable) {
-                    var saved = await courseRequest(editingId ? "PUT" : "POST", editingId, course);
-                    if (editingId) catalog = catalog.map(function (item) { return item.id === editingId ? saved : item; });
-                    else catalog.push(saved);
-                } else if (editingId) {
-                    catalog = catalog.map(function (item) { return item.id === editingId ? Object.assign({}, item, course) : item; });
+                const fields = { name, category, duration, fee, icon };
+                const response = await apiRequest(
+                    editingId ? "/api/courses/" + encodeURIComponent(editingId) : "/api/courses",
+                    { method: editingId ? "PUT" : "POST", body: JSON.stringify(fields) }
+                );
+                const courses = getCourses();
+                if (editingId) {
+                    const index = courses.findIndex(function (item) { return item.id === editingId; });
+                    if (index !== -1) courses[index] = response.data;
                 } else {
-                    catalog.push(Object.assign({ id: id("course_") }, course));
+                    courses.push(response.data);
                 }
-                write("courses", catalog);
-                resetForm();
-                render();
-                notify(wasEditing ? "Course updated." : "Course added.");
+                write(STORAGE_KEYS.courses, courses);
             } catch (error) {
-                notify(error.message, "error");
+                notify(error.message || "Unable to save course.", "error");
+                return;
             }
-        });
-        if (cancelButton) cancelButton.addEventListener("click", resetForm);
-        var startNewCourseButton = document.getElementById("startNewCourse");
-        if (startNewCourseButton) startNewCourseButton.addEventListener("click", function () {
-            resetForm();
-            document.getElementById("courseName").focus();
-        });
-        render();
-    }
-    function setupQuestions() {
-        var form = document.getElementById("questionForm"), list = document.getElementById("questionList"), questions = read("questions", defaultQuestions);
-        var editingId = null;
-        function render() {
-            write("questions", questions);
-            list.innerHTML = questions.length ? questions.map(function (q, index) { return "<article class=\"question-admin\"><div><strong>Q" + (index + 1) + ". " + text(q.question) + "</strong><p>" + q.options.map(function (option, i) { return String.fromCharCode(65 + i) + ". " + text(option); }).join(" · ") + "</p><small>Correct answer: " + String.fromCharCode(64 + Number(q.answer)) + "</small></div><div class=\"question-actions\"><button class=\"btn btn-ghost\" data-edit-question=\"" + q.id + "\">Edit</button><button class=\"btn btn-ghost danger-text\" data-delete-question=\"" + q.id + "\">Delete</button></div></article>"; }).join("") : "<p class=\"empty-state\">No questions yet.</p>";
-            list.querySelectorAll("[data-edit-question]").forEach(function (button) { button.addEventListener("click", function () {
-                var question = questions.find(function (item) { return item.id === button.getAttribute("data-edit-question"); });
-                if (!question) return;
-                editingId = question.id;
-                document.getElementById("question").value = question.question;
-                question.options.forEach(function (option, index) { document.getElementById("option" + (index + 1)).value = option; });
-                document.getElementById("answer").value = question.answer;
-                document.querySelector("#questionForm button[type=\"submit\"]").textContent = "Update question";
-                document.getElementById("question").focus();
-            }); });
-            list.querySelectorAll("[data-delete-question]").forEach(function (button) { button.addEventListener("click", function () { questions = questions.filter(function (q) { return q.id !== button.getAttribute("data-delete-question"); }); render(); }); });
-        }
-        if (!form || !list) return; render();
-        form.addEventListener("submit", function (event) {
-            event.preventDefault();
-            var questionText = document.getElementById("question").value.trim();
-            var options = [1, 2, 3, 4].map(function (n) { return document.getElementById("option" + n).value.trim(); });
-            var answer = Number(document.getElementById("answer").value);
-            if (!questionText || options.some(function (option) { return !option; }) || !answer) return notify("Complete the question, all four options, and the correct answer.", "error");
-            if (editingId) {
-                var existing = questions.find(function (question) { return question.id === editingId; });
-                if (existing) { existing.question = questionText; existing.options = options; existing.answer = answer; }
-                editingId = null;
-                notify("Question updated.");
-            } else {
-                questions.push({ id: id("q_"), question: questionText, options: options, answer: answer });
-                notify("Question added.");
-            }
+
             form.reset();
-            document.querySelector("#questionForm button[type=\"submit\"]").textContent = "Save question";
-            render();
+            delete form.dataset.editingId;
+            const title = document.getElementById("courseFormTitle");
+            if (title) title.textContent = "Add a course";
+            await renderCourses();
+            notify(editingId ? "Course updated." : "Course added.");
         });
+
+        document.getElementById("cancelCourseEdit")?.addEventListener("click", function () {
+            form.reset();
+            delete form.dataset.editingId;
+            const title = document.getElementById("courseFormTitle");
+            if (title) title.textContent = "Add a course";
+        });
+
+        document.getElementById("startNewCourse")?.addEventListener("click", function () {
+            form.reset();
+            delete form.dataset.editingId;
+            const title = document.getElementById("courseFormTitle");
+            if (title) title.textContent = "Add a course";
+        });
+
+        renderCourses();
     }
-    function setupAdminTables() {
-        var students = read("students", []), payments = read("payments", []), results = read("results", []);
-        var studentTable = document.getElementById("studentRows");
-        var collegeFilter = document.getElementById("studentCollegeFilter");
-        if (collegeFilter) {
-            var colleges = Array.from(new Set(students.map(function (student) { return normalizeCollege(student.college); }).filter(Boolean))).sort();
-            var selectedCollege = collegeFilter.value || "All";
-            collegeFilter.innerHTML = "<option value=\"All\">All colleges</option>" + colleges.map(function (college) { return "<option value=\"" + text(college) + "\">" + text(college) + "</option>"; }).join("");
-            if (colleges.indexOf(selectedCollege) >= 0) collegeFilter.value = selectedCollege; else collegeFilter.value = "All";
-        }
-        var selectedCollege = collegeFilter ? collegeFilter.value : "All";
-        var filteredStudents = students.filter(function (student) { return selectedCollege === "All" || normalizeCollege(student.college) === selectedCollege; });
-        if (studentTable) studentTable.innerHTML = filteredStudents.length ? filteredStudents.map(function (student) { return "<tr><td>" + text(student.name) + "</td><td>" + text(student.email) + "</td><td>" + text(student.college || "—") + "</td><td>" + ((student.registeredExams || []).length || 0) + "</td><td><span class=\"status " + (student.paymentStatus === "Paid" ? "success" : "warning") + "\">" + text(student.paymentStatus || "Not Paid") + "</span></td><td>" + new Date(student.createdAt || Date.now()).toLocaleDateString() + "</td></tr>"; }).join("") : "<tr><td colspan=\"6\" class=\"empty-state\">No students registered.</td></tr>";
-        var paymentTable = document.getElementById("paymentRows");
-        if (paymentTable) paymentTable.innerHTML = payments.length ? payments.slice().reverse().map(function (payment) { return "<tr><td>" + text(payment.name) + "<small>" + text(payment.email) + "</small></td><td>" + text(payment.exams.join(", ")) + "</td><td>" + money(payment.amount) + "</td><td>" + text(payment.method) + "</td><td><span class=\"status success\">Paid</span><small>" + text(payment.transactionId) + "</small></td></tr>"; }).join("") : "<tr><td colspan=\"5\" class=\"empty-state\">No payments recorded.</td></tr>";
-        var resultTable = document.getElementById("adminResultRows");
-        if (resultTable) resultTable.innerHTML = results.length ? results.slice().reverse().map(function (result) { return "<tr><td>" + text(result.name) + "<small>" + text(result.email) + "</small></td><td>" + text(result.exam) + "</td><td>" + result.score + "/" + result.total + "</td><td>" + result.percentage + "%</td><td><span class=\"status " + (result.status === "Pass" ? "success" : "danger") + "\">" + result.status + "</span></td></tr>"; }).join("") : "<tr><td colspan=\"5\" class=\"empty-state\">No exam results yet.</td></tr>";
-    }
-    function setupStudentProgress() {
-        var table = document.getElementById("progressRows");
-        if (!table) return;
-        var search = document.getElementById("progressSearch");
-        var filter = document.getElementById("progressFilter");
-        var collegeFilter = document.getElementById("collegeFilter");
-        function formatDate(value) {
-            return value ? new Date(value).toLocaleString("en-IN") : "?";
-        }
-        function buildCollegeOptions() {
-            if (!collegeFilter) return;
-            var colleges = Array.from(new Set(read("students", []).map(function (student) { return normalizeCollege(student.college); }).concat(read("studentProgress", []).map(function (record) { return normalizeCollege(record.college); })).filter(Boolean))).sort();
-            var selected = collegeFilter.value || "All";
-            collegeFilter.innerHTML = "<option value=\"All\">All colleges</option>" + colleges.map(function (college) { return "<option value=\"" + text(college) + "\">" + text(college) + "</option>"; }).join("");
-            if (colleges.indexOf(selected) >= 0) collegeFilter.value = selected; else collegeFilter.value = "All";
-        }
-        function render() {
-            buildCollegeOptions();
-            var query = (search && search.value || "").trim().toLowerCase();
-            var status = filter && filter.value || "All";
-            var selectedCollege = collegeFilter && collegeFilter.value || "All";
-            var records = read("studentProgress", []).filter(function (record) {
-                var matchesText = !query || [record.name, record.email, record.exam].join(" ").toLowerCase().indexOf(query) >= 0;
-                var matchesCollege = selectedCollege === "All" || normalizeCollege(record.college) === selectedCollege;
-                return matchesText && matchesCollege && (status === "All" || record.status === status);
-            }).sort(function (a, b) {
-                return new Date(b.completedAt || b.startedAt || 0) - new Date(a.completedAt || a.startedAt || 0);
+
+    function renderQuestionManagement() {
+        const form = document.getElementById("questionForm");
+        if (!form) return;
+
+        const list = document.getElementById("questionList");
+        if (!list) return;
+
+        async function renderQuestions() {
+            let questions;
+            try {
+                const payload = await apiRequest("/api/questions", {}, function () { return { data: getQuestions() }; });
+                questions = payload.data;
+                write(STORAGE_KEYS.questions, questions);
+            } catch (error) {
+                list.textContent = error.message || "Unable to load questions.";
+                return;
+            }
+
+            list.replaceChildren(...questions.map(function (question) {
+                const item = document.createElement("div");
+                const details = document.createElement("div");
+                const text = document.createElement("strong");
+                const options = document.createElement("p");
+                const answer = document.createElement("small");
+                const deleteButton = document.createElement("button");
+                item.className = "list-card";
+                text.textContent = question.question;
+                options.textContent = question.options.map(function (option, index) {
+                    return (index + 1) + ". " + option;
+                }).join("  ");
+                answer.textContent = "Correct answer: Option " + question.answer;
+                details.append(text, options, answer);
+                deleteButton.type = "button";
+                deleteButton.className = "danger";
+                deleteButton.dataset.questionDelete = question.id;
+                deleteButton.textContent = "Delete";
+                item.append(details, deleteButton);
+                return item;
+            }));
+            if (!questions.length) {
+                const empty = document.createElement("p");
+                empty.className = "muted";
+                empty.textContent = "No questions saved.";
+                list.append(empty);
+            }
+
+            document.querySelectorAll("[data-question-delete]").forEach(function (button) {
+                button.addEventListener("click", async function () {
+                    const questionId = button.dataset.questionDelete;
+                    try {
+                        await apiRequest("/api/questions/" + encodeURIComponent(questionId), { method: "DELETE" });
+                    } catch (error) {
+                        notify(error.message || "Unable to remove question.", "error");
+                        return;
+                    }
+                    const questionsAfter = getQuestions().filter(function (item) { return item.id !== button.dataset.questionDelete; });
+                    write(STORAGE_KEYS.questions, questionsAfter);
+                    await renderQuestions();
+                    notify("Question removed.");
+                });
             });
-            table.innerHTML = records.length ? records.map(function (record) {
-                var statusClass = record.status === "Completed" ? "success" : record.status === "In Progress" ? "warning" : "danger";
-                return "<tr><td><strong>" + text(record.name) + "</strong><small>" + text(record.email) + "</small></td><td>" + text(record.exam) + "</td><td><span class=\"status " + statusClass + "\">" + text(record.status) + "</span></td><td>" + (record.score == null ? "?" : record.score + "/" + record.total) + "</td><td>" + (record.percentage == null ? "?" : record.percentage + "%") + "</td><td>" + record.attempted + "/" + record.total + "</td><td>" + (record.unanswered == null ? "?" : record.unanswered) + "</td><td>" + formatDate(record.completedAt || record.startedAt) + "</td></tr>";
-            }).join("") : "<tr><td colspan=\"8\" class=\"empty-state\">No progress records match your search.</td></tr>";
         }
-        if (search) search.addEventListener("input", render);
-        if (filter) filter.addEventListener("change", render);
-        if (collegeFilter) collegeFilter.addEventListener("change", render);
-        render();
-    }
-    async function init() {
-        await loadCatalog();
-        var savedQuestions = read("questions", null);
-        if (!Array.isArray(savedQuestions) || !savedQuestions.length) savedQuestions = defaultQuestions.map(function (question) { return Object.assign({}, question, { options: question.options.slice() }); });
-        savedQuestions = savedQuestions.map(function (question) {
-            return { id: question.id || id("q_"), question: question.question || "", options: Array.isArray(question.options) ? question.options : ["Option A", "Option B", "Option C", "Option D"], answer: Number(question.answer) || 1 };
+
+        form.addEventListener("submit", async function (event) {
+            event.preventDefault();
+            const questionText = document.getElementById("question").value.trim();
+            const options = [document.getElementById("option1").value, document.getElementById("option2").value, document.getElementById("option3").value, document.getElementById("option4").value].map(function (value) { return value.trim(); });
+            const answer = Number(document.getElementById("answer").value);
+
+            if (!questionText || options.some(function (option) { return !option; }) || !Number.isInteger(answer) || answer < 1 || answer > 4) {
+                notify("Complete the question and choose a valid answer.", "error");
+                return;
+            }
+
+            try {
+                const payload = await apiRequest("/api/questions", {
+                    method: "POST",
+                    body: JSON.stringify({ question: questionText, options: options, answer: answer })
+                });
+                const questions = getQuestions();
+                questions.push(payload.data);
+                write(STORAGE_KEYS.questions, questions);
+            } catch (error) {
+                notify(error.message || "Unable to save question.", "error");
+                return;
+            }
+
+            form.reset();
+            await renderQuestions();
+            notify("Question saved.");
         });
-        write("questions", savedQuestions);
-        var savedResults = read("results", []);
-        var legacyResult = read("examResult", null), legacyStudent = currentStudent();
-        if (!savedResults.length && legacyResult && legacyStudent) {
-            savedResults = [{ id: id("res_"), email: legacyStudent.email, name: legacyStudent.name, exam: "Online assessment", score: Number(legacyResult.score) || 0, total: Number(legacyResult.total) || 0, percentage: legacyResult.percentage || "0.00", status: legacyResult.status || "Fail", date: new Date().toISOString() }];
+
+        renderQuestions();
+    }
+
+    async function renderStudentProgress() {
+        const progressRows = document.getElementById("progressRows");
+        if (!progressRows) return;
+
+        let students = read(STORAGE_KEYS.students, []);
+        let results = read(STORAGE_KEYS.results, []);
+        try {
+            const [studentPayload, resultPayload] = await Promise.all([
+                apiRequest("/api/students", {}, function () { return { data: students }; }),
+                apiRequest("/api/results", {}, function () { return { data: results }; })
+            ]);
+            students = studentPayload.data;
+            results = resultPayload.data;
+            write(STORAGE_KEYS.students, students);
+            write(STORAGE_KEYS.results, results);
+        } catch (error) {
+            notify(error.message || "Unable to load student progress.", "error");
         }
-        write("payments", read("payments", [])); write("examRegistrations", read("examRegistrations", [])); write("results", savedResults); write("students", read("students", [])); write("studentProgress", read("studentProgress", []));
-        if (!guard()) return; bindLogout();
-        setupRegister(); setupLogin(); setupAdminLogin(); setupPasswordToggles(); setupDashboard(); setupExamRegistration(); setupPayment(); setupProfile(); setupResult(); setupExam(); setupAdminDashboard(); setupQuestions(); setupCourses(); setupAdminTables(); setupStudentProgress();
-    }
-    document.addEventListener("DOMContentLoaded", function () {
-        init().catch(function (error) {
-            console.error("Unable to initialize Examly:", error);
-            notify("Unable to load the application. Please refresh and try again.", "error");
+        const searchable = students.map(function (student) {
+            const studentResults = results.filter(function (result) { return result.studentId === student.id; });
+            const last = studentResults.length ? studentResults[studentResults.length - 1] : null;
+            return {
+                student: student,
+                score: studentResults.length ? studentResults[studentResults.length - 1].score : 0,
+                percentage: studentResults.length ? studentResults[studentResults.length - 1].percentage : 0,
+                status: studentResults.length ? "Completed" : "In Progress",
+                attempted: studentResults.length,
+                unanswered: Math.max(0, (student.registeredExams || []).length - studentResults.length),
+                lastActivity: last ? new Date(last.submittedAt).toLocaleDateString() : "No submission"
+            };
         });
-    });
-}());
+
+        renderTextTable(progressRows, searchable.map(function (entry) {
+            return [entry.student.name + " (" + entry.student.email + ")", (entry.student.registeredExams || []).map(function (exam) { return exam.name || exam; }).join(", "), entry.status, entry.score, entry.percentage + "%", entry.attempted, entry.unanswered, entry.lastActivity];
+        }), "No student activity yet.", 8);
+    }
+
+    async function renderStudentsList() {
+        const rows = document.getElementById("studentRows");
+        if (!rows) return;
+
+        let students = read(STORAGE_KEYS.students, []);
+        try {
+            const payload = await apiRequest("/api/students", {}, function () { return { data: students }; });
+            students = payload.data;
+            write(STORAGE_KEYS.students, students);
+        } catch (error) {
+            notify(error.message || "Unable to load students.", "error");
+        }
+        renderTextTable(rows, students.map(function (student) {
+            return [student.name + " (" + student.id + ")", student.email, student.college, (student.registeredExams || []).length, student.paymentStatus || "Not Paid", new Date(student.createdAt).toLocaleDateString()];
+        }), "No students registered yet.", 6);
+    }
+
+    async function renderPaymentsList() {
+        const rows = document.getElementById("paymentRows");
+        if (!rows) return;
+
+        let payments = read(STORAGE_KEYS.payments, []);
+        try {
+            const payload = await apiRequest("/api/payments", {}, function () { return { data: payments }; });
+            payments = payload.data;
+            write(STORAGE_KEYS.payments, payments);
+        } catch (error) {
+            notify(error.message || "Unable to load payment records.", "error");
+        }
+        renderTextTable(rows, payments.map(function (payment) {
+            return [payment.studentName + " (" + payment.email + ")", (payment.exams || []).map(function (exam) { return exam.name; }).join(", "), "₹" + payment.amount, payment.method, payment.status + " / " + payment.transactionId];
+        }), "No payment records found.", 5);
+    }
+
+    async function renderAdminResultsList() {
+        const rows = document.getElementById("adminResultRows");
+        if (!rows) return;
+
+        let results = read(STORAGE_KEYS.results, []);
+        try {
+            const payload = await apiRequest("/api/results", {}, function () { return { data: results }; });
+            results = payload.data;
+            write(STORAGE_KEYS.results, results);
+        } catch (error) {
+            notify(error.message || "Unable to load exam results.", "error");
+        }
+        renderTextTable(rows, results.map(function (result) {
+            return [result.studentName, result.examName, result.score + " / " + result.total, result.percentage + "%", result.status];
+        }), "No exam results yet.", 5);
+    }
+
+    function setupExamTaking() {
+        const form = document.getElementById("examForm");
+        if (!form) return;
+
+        const params = new URLSearchParams(window.location.search);
+        const courseId = params.get("course");
+        const title = document.getElementById("examTitle");
+        const questionList = document.getElementById("questionList");
+        const timerLabel = document.getElementById("examTimer");
+        const submitButton = document.getElementById("submitExam");
+
+        if (!courseId) {
+            notify("Choose an assessment from your dashboard first.", "error");
+            return;
+        }
+
+        apiRequest("/api/exams/" + encodeURIComponent(courseId) + "/questions")
+            .then(function (payload) {
+                const exam = payload.data;
+                if (title) title.textContent = exam.course.name;
+                questionList.replaceChildren(...exam.questions.map(function (question, index) {
+                    const card = document.createElement("section");
+                    const heading = document.createElement("h3");
+                    const number = document.createElement("p");
+                    card.className = "question-card";
+                    number.className = "question-number";
+                    number.textContent = "QUESTION " + (index + 1);
+                    heading.textContent = question.question;
+                    card.append(number, heading);
+
+                    question.options.forEach(function (option, optionIndex) {
+                        const label = document.createElement("label");
+                        const input = document.createElement("input");
+                        input.type = "radio";
+                        input.name = "answer-" + question.id;
+                        input.value = String(optionIndex + 1);
+                        label.className = "exam-option";
+                        label.append(input, document.createTextNode(" " + option));
+                        card.append(label);
+                    });
+                    return card;
+                }));
+
+                let remaining = Math.max(1, Number.parseInt(exam.course.duration, 10) || 30) * 60;
+                const timerId = window.setInterval(function () {
+                    remaining -= 1;
+                    const minutes = String(Math.floor(remaining / 60)).padStart(2, "0");
+                    const seconds = String(remaining % 60).padStart(2, "0");
+                    timerLabel.textContent = minutes + ":" + seconds;
+                    if (remaining <= 0) {
+                        window.clearInterval(timerId);
+                        form.requestSubmit();
+                    }
+                }, 1000);
+
+                form.addEventListener("submit", async function (event) {
+                    event.preventDefault();
+                    if (submitButton.disabled) return;
+                    submitButton.disabled = true;
+                    const answers = {};
+                    exam.questions.forEach(function (question) {
+                        const selected = form.querySelector("input[name='answer-" + CSS.escape(question.id) + "']:checked");
+                        if (selected) answers[question.id] = Number(selected.value);
+                    });
+
+                    try {
+                        const response = await apiRequest("/api/exams/" + encodeURIComponent(courseId) + "/submit", {
+                            method: "POST",
+                            body: JSON.stringify({ answers: answers })
+                        });
+                        const results = read(STORAGE_KEYS.results, []);
+                        results.push(response.data);
+                        write(STORAGE_KEYS.results, results);
+                        notify("Assessment submitted.");
+                        window.location.href = "result.html";
+                    } catch (error) {
+                        submitButton.disabled = false;
+                        notify(error.message || "Unable to submit this assessment.", "error");
+                    }
+                });
+            })
+            .catch(function (error) {
+                questionList.textContent = error.message || "Unable to load this assessment.";
+            });
+    }
+
+    async function initialize() {
+        ensureDemoData();
+        setupPasswordToggle();
+        setupLogoutButtons();
+        if (!await setupGuards()) return;
+        setupRegister();
+        setupStudentLogin();
+        setupAdminLogin();
+
+        if (document.body && document.body.dataset && document.body.dataset.guard === "student") {
+            renderStudentDashboard();
+            renderStudentResults();
+            renderProfile();
+            setupProfileForm();
+            setupCourseSelection();
+            setupPaymentPage();
+            setupExamTaking();
+        }
+
+        if (document.body && document.body.dataset && document.body.dataset.guard === "admin") {
+            renderAdminDashboard();
+            renderCourseManagement();
+            renderQuestionManagement();
+            renderStudentProgress();
+            renderStudentsList();
+            renderPaymentsList();
+            renderAdminResultsList();
+        }
+    }
+
+    document.addEventListener("DOMContentLoaded", initialize);
+})();
